@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 
 namespace VSUpdater
 {
@@ -8,19 +9,26 @@ namespace VSUpdater
     {
         const string VSInstallerLocation = @"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe";
         const string VSInstallerArgs = "update --quiet --norestart --force --installWhileDownloading --installpath ";
-        static void Main(string directory)
+        static void Main(string directory, string[] exclude)
         {
             directory ??= Environment.CurrentDirectory;
+            exclude ??= Array.Empty<string>();
 
             Console.WriteLine($"Updating all VS installs under {directory}.");
 
             var count = 0;
             foreach (var dir in Directory.GetDirectories(directory))
             {
-                // first lets make sure this is a VS install
-                string devenvexe = Path.Combine(dir, "Common7", "IDE", "devenv.exe");
-                if (!File.Exists(devenvexe))
+                if (exclude.Any(e => Path.GetFileName(dir).Equals(e, StringComparison.OrdinalIgnoreCase)))
                 {
+                    Console.WriteLine($"Skipping {dir} because it's in the exclude list.");
+                    continue;
+                }
+                
+                // first lets make sure this is a VS install
+                if (!File.Exists(Path.Combine(dir, "Common7", "IDE", "devenv.exe")))
+                {
+                    Console.WriteLine($"Skipping {dir} because it does not appear to be a VS install.");
                     continue;
                 }
 
