@@ -2,16 +2,15 @@
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Principal;
 
 namespace VSUpdater
 {
     class Program
     {
-        const string VSInstallerLocation = @"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe";
-        const string VSInstallerArgs = "update --quiet --norestart --force --installWhileDownloading --installpath ";
         static void Main(string directory, string[] exclude)
         {
-            directory ??= Environment.CurrentDirectory;
+            directory ??= @"C:\Program Files (x86)\Microsoft Visual Studio";
             exclude ??= Array.Empty<string>();
 
             Console.WriteLine($"Updating all VS installs under {directory}.");
@@ -19,21 +18,20 @@ namespace VSUpdater
             var count = 0;
             foreach (var dir in Directory.GetDirectories(directory))
             {
-                if (exclude.Any(e => Path.GetFileName(dir).Equals(e, StringComparison.OrdinalIgnoreCase)))
+                if (TryUpdate(dir))
                 {
-                    Console.WriteLine($"Skipping {dir} because it's in the exclude list.");
-                    continue;
-                }
-                
-                // first lets make sure this is a VS install
-                if (!File.Exists(Path.Combine(dir, "Common7", "IDE", "devenv.exe")))
-                {
-                    Console.WriteLine($"Skipping {dir} because it does not appear to be a VS install.");
+                    count++;
                     continue;
                 }
 
-                UpdateVS(dir);
-                count++;
+                // we look one more directory down because the default structure is Year\Edition
+                foreach (var subDir in Directory.GetDirectories(dir))
+                {
+                    if (TryUpdate(subDir))
+                    {
+                        count++;
+                    }
+                }
             }
 
             if (count == 0)
@@ -44,42 +42,70 @@ namespace VSUpdater
             {
                 Console.WriteLine($"Updated {count} VS installs.");
             }
+
+            bool TryUpdate(string directory)
+            {
+                if (File.Exists(Path.Combine(directory, "Common7", "IDE", "devenv.exe")))
+                {
+                    if (exclude.Any(e => Path.GetFileName(directory).Equals(e, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        Console.WriteLine($"Skipping {directory} because it's in the exclude list.");
+                        return false;
+                    }
+
+                    UpdateVS(directory);
+                    return true;
+                }
+
+                Console.WriteLine($"Skipping {directory} because it does not appear to be a VS install.");
+                return false;
+            }
         }
 
         private static void UpdateVS(string dir)
         {
             Console.WriteLine($"Updating {dir}.");
 
-            var psi = new ProcessStartInfo
+            try
             {
-                FileName = VSInstallerLocation,
-                Arguments = VSInstallerArgs + dir,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                CreateNoWindow = true
-            };
-            
-            using (var process = new Process())
+                var psi = new ProcessStartInfo
+                {
+                    FileName = @"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe",
+                    Arguments = $@"update --quiet --norestart --force --installWhileDownloading --installpath ""{dir}""",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+
+                using (var process = new Process())
+                {
+                    process.StartInfo = psi;
+                    process.OutputDataReceived += new DataReceivedEventHandler(StdOutReceived);
+                    process.ErrorDataReceived += new DataReceivedEventHandler(StdErrReceived);
+                    process.Start();
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+                    process.WaitForExit();
+                }
+            }
+            catch (Exception ex)
             {
-                process.StartInfo = psi;
-                process.OutputDataReceived += new DataReceivedEventHandler(StdOutReceived);
-                process.ErrorDataReceived += new DataReceivedEventHandler(StdErrReceived);
-                process.Start();
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
-                process.WaitForExit();
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("Error: " + ex.Message);
+                Console.ResetColor();
             }
         }
 
         private static void StdOutReceived(object sender, DataReceivedEventArgs e)
         {
-            Console.ResetColor();
             Console.WriteLine(e.Data);
         }
         private static void StdErrReceived(object sender, DataReceivedEventArgs e)
         {
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine(e.Data);
+            Console.ResetColor();
         }
 
     }
