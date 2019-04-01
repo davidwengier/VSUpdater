@@ -6,9 +6,9 @@ using System.Security.Principal;
 
 namespace VSUpdater
 {
-    class Program
+    internal class Program
     {
-        static void Main(string directory, string[] exclude)
+        internal static void Main(string directory, string[] exclude)
         {
             directory ??= @"C:\Program Files (x86)\Microsoft Visual Studio";
             exclude ??= Array.Empty<string>();
@@ -18,7 +18,7 @@ namespace VSUpdater
             var count = 0;
             foreach (var dir in Directory.GetDirectories(directory))
             {
-                if (TryUpdate(dir))
+                if (TryUpdate(dir, exclude))
                 {
                     count++;
                     continue;
@@ -27,7 +27,7 @@ namespace VSUpdater
                 // we look one more directory down because the default structure is Year\Edition
                 foreach (var subDir in Directory.GetDirectories(dir))
                 {
-                    if (TryUpdate(subDir))
+                    if (TryUpdate(subDir, exclude))
                     {
                         count++;
                     }
@@ -42,24 +42,24 @@ namespace VSUpdater
             {
                 Console.WriteLine($"Updated {count} VS installs.");
             }
+        }
 
-            bool TryUpdate(string directory)
+        private static bool TryUpdate(string directory, string[] exclude )
+        {
+            if (File.Exists(Path.Combine(directory, "Common7", "IDE", "devenv.exe")))
             {
-                if (File.Exists(Path.Combine(directory, "Common7", "IDE", "devenv.exe")))
+                if (exclude.Any(e => Path.GetFileName(directory).Equals(e, StringComparison.OrdinalIgnoreCase)))
                 {
-                    if (exclude.Any(e => Path.GetFileName(directory).Equals(e, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        Console.WriteLine($"Skipping {directory} because it's in the exclude list.");
-                        return false;
-                    }
-
-                    UpdateVS(directory);
-                    return true;
+                    Console.WriteLine($"Skipping {directory} because it's in the exclude list.");
+                    return false;
                 }
 
-                Console.WriteLine($"Skipping {directory} because it does not appear to be a VS install.");
-                return false;
+                UpdateVS(directory);
+                return true;
             }
+
+            Console.WriteLine($"Skipping {directory} because it does not appear to be a VS install.");
+            return false;
         }
 
         private static void UpdateVS(string dir)
@@ -101,6 +101,7 @@ namespace VSUpdater
         {
             Console.WriteLine(e.Data);
         }
+        
         private static void StdErrReceived(object sender, DataReceivedEventArgs e)
         {
             Console.ForegroundColor = ConsoleColor.Red;
